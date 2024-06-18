@@ -103,16 +103,25 @@ def nuevo_libro(libro : Libro, response : Response):
     try:
         dbooks.loc[len(dbooks)] = [libro.author.title(),
                                 libro.country.title(),
-                                libro.imageLink,
                                 libro.language.title(),
                                 libro.link,
                                 libro.pages,
                                 libro.title.title(),
                                 libro.year
                                 ]
+	books_images.loc[len(books_images) = [libro.title.title(),libro.imageLink]	
+
         dbooks.to_json('books.json')
     except:
         response.status_code = status.HTTP_406_NOT_ACCEPTABLE
         return('Ha ocurrido un error, intentar de nuevo revisando los parámetros')
 
     return(f'Se ha insertado {libro.title.title()} a la lista.')
+
+@app.delete("/eliminar-libro, status_code=status.HTTP_202_ACCEPTED)
+def eliminar_libro(titulo: str, response : Response):
+	dbooks = dbooks.drop(dbooks[dbooks["title"] == titulo])
+	books_images =  books_images.drop(dbooks[dbooks["title"] == titulo])
+	dbooks.to_json("books.json")
+	books_images.to_json("bookimagepath.json")
+	return(f"{titulo} ha sido eliminado correctamente de la base de datos")
