@@ -1,17 +1,21 @@
-from fastapi import FastAPI, status, Response
+from fastapi import FastAPI, status, Response, Depends
 import pandas as pd
 import re
-from PIL import Image
-from typing import Optional
-from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
-
+from pydantic import BaseModel
+from typing import Optional, Union
+import modelos
+from datetime import timedelta
+from fastapi.security import OAuth2PasswordRequestForm
 # Iniciamos fastapi y cargamos el json de los datos
 app = FastAPI()
 
 dbooks = pd.read_json('books.json')
 books_images = pd.read_json('booksimagepath.json')
+users = pd.read_json('users.json')
 
+#users = pd.DataFrame(columns = ['User', 'Password'])
+#users.to_json('users.json')
 # Use este regex para eliminar \n que aparecian al final de los links
 # dbooks['link'] = dbooks['link'].str.replace('\\n', '', regex=True)
 
@@ -21,8 +25,34 @@ books_images = pd.read_json('booksimagepath.json')
 #dbooks.drop(columns='imageLink', inplace=True)
 #dbooks.to_json('books.json')
 
+@app.post('/nuevo-usuario', status_code=status.HTTP_201_CREATED, tags = ['Autenticacion'])
+def nuevo_usuario(usuario : modelos.Usuario, response : Response):
+    if usuario.user in users['User'].unique():
+        response.status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+        return('Nombre de usuario en uso')
+    users.loc[len(users)] = [usuario.user, modelos.Hash.bcrypt(usuario.password)]
+    users.to_json('users.json')
+    return(f'Usuario {usuario.user} creado')
+
+@app.post('/login', tags = ['Autenticacion'])
+def login(response : Response, log_credential: OAuth2PasswordRequestForm = Depends()):
+    user_found = users[users['User'] == log_credential.username]
+    
+    if user_found.empty:
+        response.status_code = status.HTTP_404_NOT_FOUND
+        return('Usuario o contraseña incorrecta')
+    
+    hashedpass = user_found['Password'].values[0]
+    if not modelos.Hash.autenticar(log_credential.password, hashedpass):
+        response.status_code = status.HTTP_404_NOT_FOUND
+        return('Usuario o contraseña incorrecta')
+    
+    access_token = modelos.create_access_token(data={"sub": log_credential.username}, expires_delta = None)
+    return modelos.Token(access_token=access_token, token_type="bearer")
+    
+
 @app.get('/diccionario-autores')
-def diccionario_autores():
+def diccionario_autores(get_current_user : modelos.Usuario = Depends(modelos.get_current_user)):
     # Retorna los autores ordenados alfabeticamente
     return(sorted(dbooks['author'].unique()))
 
@@ -88,18 +118,8 @@ def actualizar_link(libro : str, path : str, response : Response, idioma : str =
 
     return(f'Link de {libro.title()} actualizado a: {link}')
 
-class Libro(BaseModel):
-    author: Optional[str] = 'Unknown'
-    country: str
-    imageLink: Optional[str] = None
-    language: str
-    link: str
-    pages: int
-    title: str
-    year: int
-
 @app.post('/nuevo-libro', status_code=status.HTTP_201_CREATED)
-def nuevo_libro(libro : Libro, response : Response):
+def nuevo_libro(libro : modelos.Libro, response : Response):
     try:
         dbooks.loc[len(dbooks)] = [libro.author.title(),
                                 libro.country.title(),
@@ -109,8 +129,8 @@ def nuevo_libro(libro : Libro, response : Response):
                                 libro.title.title(),
                                 libro.year
                                 ]
-	books_images.loc[len(books_images) = [libro.title.title(),libro.imageLink]	
-
+        books_images.loc[len(books_images)] = [libro.title.title(),libro.imageLink]	
+        books_images.to_json('bookimagepath.json')
         dbooks.to_json('books.json')
     except:
         response.status_code = status.HTTP_406_NOT_ACCEPTABLE
@@ -118,10 +138,20 @@ def nuevo_libro(libro : Libro, response : Response):
 
     return(f'Se ha insertado {libro.title.title()} a la lista.')
 
-@app.delete("/eliminar-libro, status_code=status.HTTP_202_ACCEPTED)
-def eliminar_libro(titulo: str, response : Response):
-	dbooks = dbooks.drop(dbooks[dbooks["title"] == titulo])
-	books_images =  books_images.drop(dbooks[dbooks["title"] == titulo])
-	dbooks.to_json("books.json")
-	books_images.to_json("bookimagepath.json")
-	return(f"{titulo} ha sido eliminado correctamente de la base de datos")
+@app.delete("/eliminar-libro", status_code=status.HTTP_204_NO_CONTENT)
+def eliminar_libro(libro: str, response : Response):
+    libro = re.sub('%20', ' ', libro)
+    libro = re.sub('_', ' ', libro)
+    libro = libro.lower()
+    index = dbooks[dbooks["title"].str.lower() == libro].index
+    if index.empty:
+        response.status_code = status.HTTP_404_NOT_FOUND
+        return('No se ha encontrado el libro en la base de datos')
+   
+    dbooks = dbooks.drop(index)
+    books_images =  books_images.drop(books_images[books_images["title"].str.lower() == libro].index)
+    dbooks.to_json("books.json")
+    books_images.to_json("bookimagepath.json")
+    return(f"{libro} ha sido eliminado correctamente de la base de datos")
+
+
