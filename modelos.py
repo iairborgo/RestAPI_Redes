@@ -6,6 +6,7 @@ from jose import JWTError, jwt
 from jwt.exceptions import InvalidTokenError
 from fastapi import  status, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+import pandas as pd
 
 SECRET_KEY = 'f78acc76c3f665c960454dffd51010b6'
 ALGORITHM = 'HS256'
@@ -71,3 +72,9 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
         token_data = TokenData(username=username)
     except InvalidTokenError:
         raise credentials_exception
+
+def load_data():
+    df_libros = pd.read_json('books.json')
+    df_imagepath= pd.read_json('booksimagepath.json')
+    df_usuarios = pd.read_json('users.json')
+    return df_libros, df_imagepath, df_usuarios
