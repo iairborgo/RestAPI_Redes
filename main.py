@@ -10,10 +10,6 @@ from fastapi.security import OAuth2PasswordRequestForm
 # Iniciamos fastapi y cargamos el json de los datos
 app = FastAPI()
 
-dbooks = pd.read_json('books.json')
-books_images = pd.read_json('booksimagepath.json')
-users = pd.read_json('users.json')
-
 #users = pd.DataFrame(columns = ['User', 'Password'])
 #users.to_json('users.json')
 # Use este regex para eliminar \n que aparecian al final de los links
@@ -27,15 +23,20 @@ users = pd.read_json('users.json')
 
 @app.post('/nuevo-usuario', status_code=status.HTTP_201_CREATED, tags = ['Autenticacion'])
 def nuevo_usuario(usuario : modelos.Usuario, response : Response):
+    dbooks, books_images, users = modelos.load_data()
+
     if usuario.user in users['User'].unique():
-        response.status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+        response.status_code = status.HTTP_409_CONFLICT
         return('Nombre de usuario en uso')
+    
     users.loc[len(users)] = [usuario.user, modelos.Hash.bcrypt(usuario.password)]
     users.to_json('users.json')
+
     return(f'Usuario {usuario.user} creado')
 
 @app.post('/login', tags = ['Autenticacion'])
 def login(response : Response, log_credential: OAuth2PasswordRequestForm = Depends()):
+    dbooks, books_images, users = modelos.load_data()
     user_found = users[users['User'] == log_credential.username]
     
     if user_found.empty:
@@ -52,17 +53,21 @@ def login(response : Response, log_credential: OAuth2PasswordRequestForm = Depen
     
 
 @app.get('/diccionario-autores')
-def diccionario_autores(get_current_user : modelos.Usuario = Depends(modelos.get_current_user)):
+def diccionario_autores(current_user : modelos.Usuario = Depends(modelos.get_current_user)):
+    dbooks, books_images, users = modelos.load_data()
     # Retorna los autores ordenados alfabeticamente
     return(sorted(dbooks['author'].unique()))
 
 @app.get('/diccionario-libros')
-def diccionario_autores():
+def diccionario_autores(current_user : modelos.Usuario = Depends(modelos.get_current_user)):
+    dbooks, books_images, users = modelos.load_data()
     # Retorna los títulos de los libros ordenados alfabeticamente
     return(sorted(dbooks['title'].unique()))
 
 @app.get('/busqueda-autor/{autor}')
-def busqueda_autor(autor : str, response : Response):
+def busqueda_autor(autor : str, response : Response,
+                   current_user : modelos.Usuario = Depends(modelos.get_current_user)):
+    dbooks, books_images, users = modelos.load_data()
     # Dado un autor (no es case sensitive y se puede separar nombre con espacios o _) devuelve todos los libros suyos
     autor = re.sub('%20', ' ', autor)
     autor = re.sub('_', ' ', autor)
@@ -76,7 +81,9 @@ def busqueda_autor(autor : str, response : Response):
         return query.to_dict(orient="records")
     
 @app.get('/busqueda-libro/{libro}')
-def busqueda_autor(libro : str, response : Response):
+def busqueda_libro(libro : str, response : Response,
+                   current_user : modelos.Usuario = Depends(modelos.get_current_user)):
+    dbooks, books_images, users = modelos.load_data()
     # Dado un titulo, devuelve los datos de este. No es case-sensitive y se puede separar con espacios o _
     libro = re.sub('%20', ' ', libro)
     libro = re.sub('_', ' ', libro)
@@ -90,8 +97,9 @@ def busqueda_autor(libro : str, response : Response):
         return query.to_dict(orient="records")
 
 @app.get('/busqueda-imagen/{titulo}')
-def busqueda_imagen(titulo : str, response : Response):
-
+def busqueda_imagen(titulo : str, response : Response,
+                    current_user : modelos.Usuario = Depends(modelos.get_current_user)):
+    dbooks, books_images, users = modelos.load_data()
     # Dado un título, devuelve la imagen 
     path = books_images[books_images['title'] ==  titulo ]['imageLink']
     if path.empty :
@@ -101,13 +109,15 @@ def busqueda_imagen(titulo : str, response : Response):
     return StreamingResponse(file, media_type="image/png")
 
 @app.put('/actualizar-link/{libro}', status_code=status.HTTP_202_ACCEPTED) 
-def actualizar_link(libro : str, path : str, response : Response, idioma : str = 'es'):
+def actualizar_link(libro : str, path : str, response : Response, idioma : str = 'es',
+                    current_user : modelos.Usuario = Depends(modelos.get_current_user)):
+    dbooks, books_images, users = modelos.load_data()
     # Dado un título, idioma del link (ej: ingles = en) y el subdirectorio, actualiza la lista
     libro = re.sub('%20', ' ', libro)
     libro = re.sub('_', ' ', libro)
     libro = libro.lower()
 
-    if libro not in [x.lower()for x in dbooks['title'].unique()]:
+    if libro not in [x.lower() for x in dbooks['title'].unique()]:
         response.status_code = status.HTTP_404_NOT_FOUND
         return('No encontramos el título en la base de datos')
 
@@ -118,9 +128,34 @@ def actualizar_link(libro : str, path : str, response : Response, idioma : str =
 
     return(f'Link de {libro.title()} actualizado a: {link}')
 
+
+@app.delete("/eliminar-libro", status_code=status.HTTP_202_ACCEPTED)
+def eliminar_libro(libro: str, response : Response,
+                   current_user : modelos.Usuario = Depends(modelos.get_current_user)):
+    dbooks, books_images, users = modelos.load_data()
+    libro = re.sub('%20', ' ', libro)
+    libro = re.sub('_', ' ', libro)
+    libro = libro.lower()
+    query = dbooks[dbooks['title'].str.lower() == libro].index
+    if query.empty:
+        response.status_code = status.HTTP_404_NOT_FOUND
+        return('No se ha encontrado el libro en la base de datos')
+    
+    dbooks = dbooks.drop(index = query)
+    books_images =  books_images.drop(index = books_images[books_images["title"].str.lower() == libro].index)
+    dbooks.to_json("books.json")
+    books_images.to_json("bookimagepath.json")
+    return(f"{libro.title()} ha sido eliminado correctamente de la base de datos")
+
+
+
 @app.post('/nuevo-libro', status_code=status.HTTP_201_CREATED)
-def nuevo_libro(libro : modelos.Libro, response : Response):
-    try:
+def nuevo_libro(libro : modelos.Libro, response : Response,
+                current_user : modelos.Usuario = Depends(modelos.get_current_user)):
+    
+    dbooks, books_images, users = modelos.load_data()
+
+    if libro.title.title() not in dbooks['title'].unique():
         dbooks.loc[len(dbooks)] = [libro.author.title(),
                                 libro.country.title(),
                                 libro.language.title(),
@@ -132,26 +167,8 @@ def nuevo_libro(libro : modelos.Libro, response : Response):
         books_images.loc[len(books_images)] = [libro.title.title(),libro.imageLink]	
         books_images.to_json('bookimagepath.json')
         dbooks.to_json('books.json')
-    except:
+    else:
         response.status_code = status.HTTP_406_NOT_ACCEPTABLE
-        return('Ha ocurrido un error, intentar de nuevo revisando los parámetros')
+        return('El título se encuentra en la base de datos.')
 
     return(f'Se ha insertado {libro.title.title()} a la lista.')
-
-@app.delete("/eliminar-libro", status_code=status.HTTP_204_NO_CONTENT)
-def eliminar_libro(libro: str, response : Response):
-    libro = re.sub('%20', ' ', libro)
-    libro = re.sub('_', ' ', libro)
-    libro = libro.lower()
-    index = dbooks[dbooks["title"].str.lower() == libro].index
-    if index.empty:
-        response.status_code = status.HTTP_404_NOT_FOUND
-        return('No se ha encontrado el libro en la base de datos')
-   
-    dbooks = dbooks.drop(index)
-    books_images =  books_images.drop(books_images[books_images["title"].str.lower() == libro].index)
-    dbooks.to_json("books.json")
-    books_images.to_json("bookimagepath.json")
-    return(f"{libro} ha sido eliminado correctamente de la base de datos")
-
-
