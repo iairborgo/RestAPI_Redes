@@ -25,11 +25,11 @@ app = FastAPI()
 def nuevo_usuario(usuario : modelos.Usuario, response : Response):
     dbooks, books_images, users = modelos.load_data()
 
-    if usuario.user in users['User'].unique():
+    if usuario.user in users['User'].unique(): # Checkea si existe en la ''''base de datos'''''
         response.status_code = status.HTTP_409_CONFLICT
         return('Nombre de usuario en uso')
     
-    users.loc[len(users)] = [usuario.user, modelos.Hash.bcrypt(usuario.password)]
+    users.loc[len(users)] = [usuario.user, modelos.Hash.bcrypt(usuario.password)] # Bcrypt es una funcion hash 
     users.to_json('users.json')
 
     return(f'Usuario {usuario.user} creado')
@@ -44,7 +44,7 @@ def login(response : Response, log_credential: OAuth2PasswordRequestForm = Depen
         return('Usuario o contraseña incorrecta')
     
     hashedpass = user_found['Password'].values[0]
-    if not modelos.Hash.autenticar(log_credential.password, hashedpass):
+    if not modelos.Hash.autenticar(log_credential.password, hashedpass): # checkea si la contraseña dada coincide con la encriptada
         response.status_code = status.HTTP_404_NOT_FOUND
         return('Usuario o contraseña incorrecta')
     
@@ -52,19 +52,19 @@ def login(response : Response, log_credential: OAuth2PasswordRequestForm = Depen
     return modelos.Token(access_token=access_token, token_type="bearer")
     
 
-@app.get('/diccionario-autores')
+@app.get('/diccionario-autores', tags = ['Lista'])
 def diccionario_autores(current_user : modelos.Usuario = Depends(modelos.get_current_user)):
     dbooks, books_images, users = modelos.load_data()
     # Retorna los autores ordenados alfabeticamente
     return(sorted(dbooks['author'].unique()))
 
-@app.get('/diccionario-libros')
+@app.get('/diccionario-libros', tags = ['Lista'])
 def diccionario_autores(current_user : modelos.Usuario = Depends(modelos.get_current_user)):
     dbooks, books_images, users = modelos.load_data()
     # Retorna los títulos de los libros ordenados alfabeticamente
     return(sorted(dbooks['title'].unique()))
 
-@app.get('/busqueda-autor/{autor}')
+@app.get('/busqueda-autor/{autor}', tags = ['Busqueda'])
 def busqueda_autor(autor : str, response : Response,
                    current_user : modelos.Usuario = Depends(modelos.get_current_user)):
     dbooks, books_images, users = modelos.load_data()
@@ -80,7 +80,7 @@ def busqueda_autor(autor : str, response : Response,
     else:       
         return query.to_dict(orient="records")
     
-@app.get('/busqueda-libro/{libro}')
+@app.get('/busqueda-libro/{libro}', tags = ['Busqueda'])
 def busqueda_libro(libro : str, response : Response,
                    current_user : modelos.Usuario = Depends(modelos.get_current_user)):
     dbooks, books_images, users = modelos.load_data()
@@ -96,19 +96,19 @@ def busqueda_libro(libro : str, response : Response,
     else:      
         return query.to_dict(orient="records")
 
-@app.get('/busqueda-imagen/{titulo}')
+@app.get('/busqueda-imagen/{titulo}', tags = ['Busqueda'])
 def busqueda_imagen(titulo : str, response : Response,
                     current_user : modelos.Usuario = Depends(modelos.get_current_user)):
     dbooks, books_images, users = modelos.load_data()
     # Dado un título, devuelve la imagen 
-    path = books_images[books_images['title'] ==  titulo ]['imageLink']
+    path = books_images[books_images['title'] ==  titulo.title() ]['imageLink']
     if path.empty :
         response.status_code = status.HTTP_404_NOT_FOUND
         return('No existe imagen en la base de datos')
     file = open(path.values[0], mode="rb")
     return StreamingResponse(file, media_type="image/png")
 
-@app.put('/actualizar-link/{libro}', status_code=status.HTTP_202_ACCEPTED) 
+@app.put('/actualizar-link/{libro}', status_code=status.HTTP_202_ACCEPTED, tags = ['Modificacion de Datos']) 
 def actualizar_link(libro : str, path : str, response : Response, idioma : str = 'es',
                     current_user : modelos.Usuario = Depends(modelos.get_current_user)):
     dbooks, books_images, users = modelos.load_data()
@@ -129,7 +129,7 @@ def actualizar_link(libro : str, path : str, response : Response, idioma : str =
     return(f'Link de {libro.title()} actualizado a: {link}')
 
 
-@app.delete("/eliminar-libro", status_code=status.HTTP_202_ACCEPTED)
+@app.delete("/eliminar-libro", status_code=status.HTTP_202_ACCEPTED, tags = ['Modificacion de Datos'])
 def eliminar_libro(libro: str, response : Response,
                    current_user : modelos.Usuario = Depends(modelos.get_current_user)):
     dbooks, books_images, users = modelos.load_data()
@@ -144,12 +144,12 @@ def eliminar_libro(libro: str, response : Response,
     dbooks = dbooks.drop(index = query)
     books_images =  books_images.drop(index = books_images[books_images["title"].str.lower() == libro].index)
     dbooks.to_json("books.json")
-    books_images.to_json("bookimagepath.json")
+    books_images.to_json("booksimagepath.json")
     return(f"{libro.title()} ha sido eliminado correctamente de la base de datos")
 
 
 
-@app.post('/nuevo-libro', status_code=status.HTTP_201_CREATED)
+@app.post('/nuevo-libro', status_code=status.HTTP_201_CREATED,tags = ['Modificacion de Datos'])
 def nuevo_libro(libro : modelos.Libro, response : Response,
                 current_user : modelos.Usuario = Depends(modelos.get_current_user)):
     
