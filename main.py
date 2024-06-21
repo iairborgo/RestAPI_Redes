@@ -87,8 +87,7 @@ def busqueda_libro(libro : str, response : Response,
     # Dado un titulo, devuelve los datos de este. No es case-sensitive y se puede separar con espacios o _
     libro = re.sub('%20', ' ', libro)
     libro = re.sub('_', ' ', libro)
-    libro = libro.lower()
-    
+    libro = libro.lower()  
     query = dbooks[dbooks['title'].str.lower() == libro]
     if query.empty :
         response.status_code = status.HTTP_404_NOT_FOUND
