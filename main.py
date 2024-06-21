@@ -164,7 +164,7 @@ def nuevo_libro(libro : modelos.Libro, response : Response,
                                 libro.year
                                 ]
         books_images.loc[len(books_images)] = [libro.title.title(),libro.imageLink]	
-        books_images.to_json('bookimagepath.json')
+        books_images.to_json('booksimagepath.json')
         dbooks.to_json('books.json')
     else:
         response.status_code = status.HTTP_406_NOT_ACCEPTABLE
