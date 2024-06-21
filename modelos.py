@@ -36,14 +36,13 @@ class Hash():
     def autenticar(password : str, hashed : str):
         return pwd_context.verify(password, hashed)
 
-class Login(BaseModel):
+class Login(BaseModel): # Este quedo igual que usuario pero no quiero romper nada asi que quedan los 2 :)
     user: str
     password: str
 
 class Token(BaseModel):
     access_token: str
     token_type: str
-
 
 class TokenData(BaseModel):
     username: Union[str, None] = None
