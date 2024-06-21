@@ -2,10 +2,7 @@ from fastapi import FastAPI, status, Response, Depends
 import pandas as pd
 import re
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
-from typing import Optional, Union
 import modelos
-from datetime import timedelta
 from fastapi.security import OAuth2PasswordRequestForm
 # Iniciamos fastapi y cargamos el json de los datos
 app = FastAPI()
